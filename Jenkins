@@ -36,15 +36,13 @@ pipeline {
         }
 
         stage('Fetch Secrets from Vault') {
-            steps {
-                withCredentials([string(credentialsId: 'VAULT_TOKEN', variable: 'VAULT_SECRET')]) {
-                    script {
-                        def vaultSecret = vault path: 'secret/data/app', key: 'API_KEY'
-                        echo "API Key retrieved from Vault: ${vaultSecret}"
-                    }
-                }
-            }
+    steps {
+        withVault([vaultSecrets: [[path: 'secret/data/app', engineVersion: 2, secretValues: [[envVar: 'API_KEY', vaultKey: 'API_KEY']]]], vaultUrl: 'http://127.0.0.1:8200', vaultCredentialId: 'VAULT_TOKEN']) {
+            echo "API Key from Vault: ${env.API_KEY}"
         }
+    }
+}
+
 
         stage('Deploy to Kubernetes') {
             steps {
