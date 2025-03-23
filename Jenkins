@@ -1,0 +1,91 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = "junaid0049/sample-app:latest"
+        K8S_DEPLOYMENT = "k8s/deployment.yaml"
+        SERVICE_DEPLOYMENT = "k8s/service.yaml"
+        VAULT_ADDR = "http://127.0.0.1:8200"
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                echo "Cloning repository..."
+                git url: 'https://github.com/junaid-13/sample-app.git', branch: 'main'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "Building Docker image..."
+                sh "docker build -t ${DOCKER_IMAGE} ."
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                echo "Pushing Docker image to Docker Hub..."
+                withCredentials([string(credentialsId: 'DOCKER_HUB_PASSWORD', variable: 'DOCKER_PASS')]) {
+                    sh """
+                    echo ${DOCKER_PASS} | docker login -u junaid0049 --password-stdin
+                    docker push ${DOCKER_IMAGE}
+                    """
+                }
+            }
+        }
+
+        stage('Fetch Secrets from Vault') {
+            steps {
+                withCredentials([string(credentialsId: 'VAULT_TOKEN', variable: 'VAULT_SECRET')]) {
+                    script {
+                        def vaultSecret = vault path: 'secret/data/app', key: 'API_KEY'
+                        echo "API Key retrieved from Vault: ${vaultSecret}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                echo "Applying Kubernetes Deployment..."
+                sh "kubectl apply -f ${K8S_DEPLOYMENT}"
+            }
+        }
+
+        stage ('AWS Kubernetes Deployment') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_KEY'),
+                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET')
+                ]) {
+                    sh """
+                    set -x  # Enable debugging
+                    aws eks --region us-east-1 update-kubeconfig --name devops-cluster
+                    kubectl apply -f ${K8S_DEPLOYMENT}
+                    kubectl apply -f ${SERVICE_DEPLOYMENT}
+                    kubectl get pods
+                    kubectl get svc
+                    """
+                }
+            }
+        }  // **Fixed missing bracket**
+
+        stage('Verify Deployment') {
+            steps {
+                echo "Checking Kubernetes pods..."
+                sh "kubectl get pods"
+                sh "kubectl get svc"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deployment successful!"
+        }
+        failure {
+            echo "Deployment failed. Check logs!"
+        }
+    }
+}
