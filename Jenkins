@@ -5,7 +5,6 @@ pipeline {
         DOCKER_IMAGE = "junaid0049/sample-app:latest"
         K8S_DEPLOYMENT = "k8s/deployment.yaml"
         SERVICE_DEPLOYMENT = "k8s/service.yaml"
-        VAULT_ADDR = "http://127.0.0.1:8200"
     }
 
     stages {
@@ -36,13 +35,16 @@ pipeline {
         }
 
         stage('Fetch Secrets from Vault') {
-    steps {
-        withVault([vaultSecrets: [[path: 'secret/data/app', engineVersion: 2, secretValues: [[envVar: 'API_KEY', vaultKey: 'API_KEY']]]], vaultUrl: 'http://127.0.0.1:8200', vaultCredentialId: 'VAULT_TOKEN']) {
-            echo "API Key from Vault: ${env.API_KEY}"
+            steps {
+                withVault(vaultSecrets: [[
+                    path: 'secret/data/app',
+                    engineVersion: 2,
+                    secretValues: [[envVar: 'API_KEY', vaultKey: 'API_KEY']]
+                ]]) {
+                    echo "API Key from Vault: ${env.API_KEY}"
+                }
+            }
         }
-    }
-}
-
 
         stage('Deploy to Kubernetes') {
             steps {
@@ -58,7 +60,7 @@ pipeline {
                     string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET')
                 ]) {
                     sh """
-                    set -x  # Enable debugging
+                    set -x
                     aws eks --region us-east-1 update-kubeconfig --name devops-cluster
                     kubectl apply -f ${K8S_DEPLOYMENT}
                     kubectl apply -f ${SERVICE_DEPLOYMENT}
@@ -67,7 +69,7 @@ pipeline {
                     """
                 }
             }
-        }  // **Fixed missing bracket**
+        }
 
         stage('Verify Deployment') {
             steps {
@@ -80,10 +82,10 @@ pipeline {
 
     post {
         success {
-            echo "Deployment successful!"
+            echo "✅ Deployment successful!"
         }
         failure {
-            echo "Deployment failed. Check logs!"
+            echo "❌ Deployment failed. Check logs!"
         }
     }
 }
